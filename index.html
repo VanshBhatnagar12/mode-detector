@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mood Detector</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <span id="user-greeting"></span>
+      <button onclick="logout()" class="logout-btn">Logout</button>
+    </div>
+    <h1>😊 Mood Detector</h1>
+    <p class="subtitle">Let your face do the talking</p>
+
+    <div class="video-wrapper">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <button id="flip-btn" title="Flip Camera">🔄</button>
+    </div>
+
+    <div id="status" class="status">Loading models...</div>
+    <div id="debug" style="font-size:0.75rem;color:#ef4444;padding:0.5rem;word-break:break-all;"></div>
+
+    <div id="timer-bar-wrap" class="timer-bar-wrap hidden">
+      <div class="timer-label">Analyzing your mood... <span id="timer-count">15</span>s</div>
+      <div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
+    </div>
+
+    <div id="mood-card" class="mood-card hidden">
+      <canvas id="face-canvas" width="120" height="120"></canvas>
+      <div id="mood-label" class="mood-label"></div>
+      <div id="mood-bar-container" class="bar-container"></div>
+    </div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+  <script defer src="app.js"></script>
+  <script>
+    const session = JSON.parse(localStorage.getItem('md_session'));
+    if (!session) window.location.href = 'login.html';
+    else document.getElementById('user-greeting').textContent = 'Hi, ' + session.name + ' 👋';
+    function logout() {
+      localStorage.removeItem('md_session');
+      window.location.href = 'login.html';
+    }
+  </script>
+</body>
+</html>

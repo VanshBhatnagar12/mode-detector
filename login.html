@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login – Mood Detector</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="auth-box">
+    <div class="auth-logo">😊</div>
+    <h2>Welcome Back</h2>
+    <p class="subtitle">Log in to Mood Detector</p>
+
+    <form id="login-form">
+      <div class="input-group">
+        <span>📧</span>
+        <input type="email" id="email" placeholder="Email" required/>
+      </div>
+      <div class="input-group">
+        <span>🔒</span>
+        <input type="password" id="password" placeholder="Password" required/>
+      </div>
+      <div id="error-msg" class="error-msg"></div>
+      <button type="submit" class="auth-btn">Log In</button>
+    </form>
+
+    <p class="auth-switch">Don't have an account? <a href="signup.html">Sign Up</a></p>
+  </div>
+  <script src="auth.js"></script>
+  <script>
+    document.querySelectorAll('.auth-btn').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        const r = document.createElement('span');
+        r.className = 'ripple';
+        const rect = btn.getBoundingClientRect();
+        r.style.left = (e.clientX - rect.left - 5) + 'px';
+        r.style.top  = (e.clientY - rect.top - 5) + 'px';
+        btn.appendChild(r);
+        setTimeout(() => r.remove(), 600);
+      });
+    });
+  </script>
+</body>
+</html>

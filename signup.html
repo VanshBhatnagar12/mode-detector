@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sign Up – Mood Detector</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="auth-box">
+    <div class="auth-logo">😊</div>
+    <h2>Create Account</h2>
+    <p class="subtitle">Join Mood Detector</p>
+
+    <form id="signup-form">
+      <div class="input-group">
+        <span>👤</span>
+        <input type="text" id="name" placeholder="Full Name" required/>
+      </div>
+      <div class="input-group">
+        <span>📧</span>
+        <input type="email" id="email" placeholder="Email" required/>
+      </div>
+      <div class="input-group">
+        <span>🔒</span>
+        <input type="password" id="password" placeholder="Password (min 6 chars)" minlength="6" required/>
+      </div>
+      <div class="strength-wrap">
+        <div class="strength-track"><div id="strength-bar" class="strength-bar"></div></div>
+        <span id="strength-label" class="strength-label"></span>
+      </div>
+      <div id="error-msg" class="error-msg"></div>
+      <button type="submit" class="auth-btn">Sign Up</button>
+    </form>
+
+    <p class="auth-switch">Already have an account? <a href="login.html">Log In</a></p>
+  </div>
+  <script src="auth.js"></script>
+  <script>
+    document.querySelectorAll('.auth-btn').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        const r = document.createElement('span');
+        r.className = 'ripple';
+        const rect = btn.getBoundingClientRect();
+        r.style.left = (e.clientX - rect.left - 5) + 'px';
+        r.style.top  = (e.clientY - rect.top - 5) + 'px';
+        btn.appendChild(r);
+        setTimeout(() => r.remove(), 600);
+      });
+    });
+  </script>
+</body>
+</html>

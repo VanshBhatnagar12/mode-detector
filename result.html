@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mood Results</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <span id="user-greeting"></span>
+      <button onclick="logout()" class="logout-btn">Logout</button>
+    </div>
+
+    <h1>🧠 Mood Analysis</h1>
+    <p class="subtitle">15-second scan complete</p>
+
+    <div id="results-container"></div>
+
+    <div style="max-width:480px; margin: 1.5rem auto 0;">
+      <button onclick="window.location.href='index.html'" class="auth-btn">Scan Again</button>
+    </div>
+  </div>
+
+  <script>
+    const PERSON_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
+
+    const MOOD_MAP = {
+      happy:     { icon: '😄', message: 'Mostly happy during the scan!' },
+      sad:       { icon: '😢', message: 'Seemed a bit sad.' },
+      angry:     { icon: '😠', message: 'Appeared angry.' },
+      fearful:   { icon: '😨', message: 'Looked fearful.' },
+      disgusted: { icon: '🤢', message: 'Something seemed to bother them.' },
+      surprised: { icon: '😲', message: 'Looked surprised!' },
+      neutral:   { icon: '😐', message: 'Mostly neutral and calm.' },
+      excited:   { icon: '🤩', message: 'Bursting with excitement!' },
+      anxious:   { icon: '😰', message: 'Seemed anxious.' },
+      contempt:  { icon: '😒', message: 'Something not sitting right.' },
+      calm:      { icon: '😌', message: 'Calm and collected.' },
+      bored:     { icon: '😑', message: 'Looked a bit bored.' },
+      confused:  { icon: '😕', message: 'Seemed confused.' },
+      tired:     { icon: '😴', message: 'Looked tired.' },
+    };
+
+    const session = JSON.parse(localStorage.getItem('md_session'));
+    if (!session) window.location.href = 'login.html';
+    else document.getElementById('user-greeting').textContent = 'Hi, ' + session.name + ' 👋';
+
+    function logout() {
+      localStorage.removeItem('md_session');
+      window.location.href = 'login.html';
+    }
+
+    function getDominant(avg) {
+      return Object.entries(avg).sort((a, b) => b[1] - a[1])[0];
+    }
+
+    function formatTime(ms) {
+      if (!ms && ms !== 0) return '—';
+      const s = (ms / 1000).toFixed(1);
+      return s + 's';
+    }
+
+    const raw = JSON.parse(localStorage.getItem('md_result'));
+    if (!raw || !Array.isArray(raw)) { window.location.href = 'index.html'; }
+
+    const container = document.getElementById('results-container');
+
+    raw.forEach((person, i) => {
+      const color = PERSON_COLORS[i % PERSON_COLORS.length];
+      const sorted = Object.entries(person.avg).sort((a, b) => b[1] - a[1]);
+      const [dominantKey, dominantVal] = sorted[0];
+      const info = MOOD_MAP[dominantKey] || { icon: '😐', message: 'Neutral.' };
+
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.style.borderTop = `4px solid ${color}`;
+      card.style.marginBottom = '1.2rem';
+
+      card.innerHTML = `
+        <div class="person-header" style="color:${color}">
+          ${person.photo ? `<img src="${person.photo}" class="person-photo" style="border-color:${color}"/>` : `<div class="person-photo-placeholder" style="border-color:${color}">👤</div>`}
+          <span class="person-name" style="color:${color}">${person.name}</span>
+          <span class="person-timing">
+            appeared at ${formatTime(person.firstSeen)} &nbsp;|&nbsp; last seen at ${formatTime(person.lastSeen)}
+          </span>
+        </div>
+
+        <div class="result-icon">${info.icon}</div>
+        <div class="result-label" style="color:${color}">${dominantKey.toUpperCase()}</div>
+        <div class="result-message">${info.message}</div>
+
+        <div class="divider"></div>
+        <p class="breakdown-title">Emotion Breakdown</p>
+        <div class="bar-container">
+          ${sorted.map(([expression, probability]) => {
+            const m   = MOOD_MAP[expression] || { };
+            const pct = Math.round(probability * 100);
+            return `
+              <div class="bar-row">
+                <span>${expression}</span>
+                <div class="bar-track">
+                  <div class="bar-fill" style="width:${pct}%; background:${color}"></div>
+                </div>
+                <span>${pct}%</span>
+              </div>`;
+          }).join('')}
+        </div>
+      `;
+
+      container.appendChild(card);
+      card.style.animationDelay = (i * 0.15) + 's';
+    });
+  </script>
+</body>
+</html>
