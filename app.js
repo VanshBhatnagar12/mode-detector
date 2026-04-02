@@ -257,30 +257,33 @@ function drawPersonOnCanvas(ctx, result, personIdx, expressions) {
   const box        = result.detection.box;
   const dominant   = expressions.asSortedArray()[0];
   const emotionKey = getDerivedEmotion(expressions) || dominant.expression;
+  const isFront    = facingMode === 'user';
+  const bx         = isFront ? overlay.width - box.x - box.width : box.x;
 
   ctx.strokeStyle = color;
   ctx.lineWidth   = 3;
-  ctx.strokeRect(box.x, box.y, box.width, box.height);
+  ctx.strokeRect(bx, box.y, box.width, box.height);
 
   const label = `Person ${personIdx + 1}: ${emotionKey.toUpperCase()}`;
   ctx.font     = 'bold 14px Segoe UI';
   const tw     = ctx.measureText(label).width;
   ctx.fillStyle = color;
-  ctx.fillRect(box.x, box.y - 24, tw + 10, 22);
+  ctx.fillRect(bx, box.y - 24, tw + 10, 22);
   ctx.fillStyle = '#fff';
-  ctx.fillText(label, box.x + 5, box.y - 7);
+  ctx.fillText(label, bx + 5, box.y - 7);
 
-  drawLandmarks(ctx, result.landmarks, color);
+  drawLandmarks(ctx, result.landmarks, color, isFront);
 }
 
-function drawLandmarks(ctx, landmarks, color) {
+function drawLandmarks(ctx, landmarks, color, isFront) {
   ctx.fillStyle   = color;
   ctx.strokeStyle = color;
   ctx.lineWidth   = 1.2;
   ctx.globalAlpha = 0.5;
+  const mx = pt => isFront ? overlay.width - pt.x : pt.x;
   landmarks.positions.forEach(pt => {
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 1.5, 0, Math.PI * 2);
+    ctx.arc(mx(pt), pt.y, 1.5, 0, Math.PI * 2);
     ctx.fill();
   });
   [
@@ -288,7 +291,7 @@ function drawLandmarks(ctx, landmarks, color) {
     landmarks.getLeftEye(), landmarks.getRightEye(), landmarks.getNose(), landmarks.getMouth(),
   ].forEach(group => {
     ctx.beginPath();
-    group.forEach((pt, i) => i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+    group.forEach((pt, i) => i === 0 ? ctx.moveTo(mx(pt), pt.y) : ctx.lineTo(mx(pt), pt.y));
     ctx.stroke();
   });
   ctx.globalAlpha = 1;
