@@ -61,7 +61,7 @@ const timerWrap    = document.getElementById('timer-bar-wrap');
 const timerCount   = document.getElementById('timer-count');
 const timerFill    = document.getElementById('timer-fill');
 
-const SCAN_DURATION = 15000;
+const SCAN_DURATION = 10000;
 let scanStartTime   = null;
 let scanDone        = false;
 
