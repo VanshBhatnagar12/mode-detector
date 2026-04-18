@@ -1,39 +1,101 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Mood Detector</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>MoodScan</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
-<body>
-  <div class="container">
-    <div class="topbar">
-      <span id="user-greeting"></span>
-      <button onclick="logout()" class="logout-btn">Logout</button>
-    </div>
-    <h1>😊 Mood Detector</h1>
-    <p class="subtitle">Let your face do the talking</p>
+<body class="hud-body">
 
-    <div class="video-wrapper">
-      <video id="video" autoplay muted playsinline></video>
-      <canvas id="overlay"></canvas>
-      <button id="flip-btn" title="Flip Camera">🔄</button>
-    </div>
+  <video autoplay muted loop playsinline class="bg-video">
+    <source src="https://cdn.coverr.co/videos/coverr-facial-recognition-technology-9737/1080p.mp4" type="video/mp4">
+  </video>
 
-    <div id="status" class="status">Loading models...</div>
-    <div id="debug" style="font-size:0.75rem;color:#ef4444;padding:0.5rem;word-break:break-all;"></div>
+  <div class="hud-shell">
 
-    <div id="timer-bar-wrap" class="timer-bar-wrap hidden">
-      <div class="timer-label">Analyzing your mood... <span id="timer-count">10</span>s</div>
-      <div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
-    </div>
+    <!-- Topbar -->
+    <header class="hud-topbar">
+      <div class="hud-brand">
+        <span class="hud-dot"></span>
+        <span class="hud-title">MOOD<span class="accent">SCAN</span></span>
+        <span class="hud-ver">v2.0</span>
+      </div>
+      <div class="hud-stats">
+        <div class="hud-stat"><span class="sl">FACES</span><span id="stat-faces" class="sv">0</span></div>
+        <div class="hud-stat"><span class="sl">CAM</span><span id="stat-mode" class="sv">FRONT</span></div>
+        <div class="hud-stat"><span class="sl">STATUS</span><span id="stat-phase" class="sv">BOOT</span></div>
+      </div>
+      <div class="hud-right">
+        <span id="user-greeting" class="hud-user"></span>
+        <button onclick="logout()" class="hud-exit">⏻ EXIT</button>
+      </div>
+    </header>
 
-    <div id="mood-card" class="mood-card hidden">
-      <canvas id="face-canvas" width="120" height="120"></canvas>
-      <div id="mood-label" class="mood-label"></div>
-      <div id="mood-bar-container" class="bar-container"></div>
-    </div>
+    <!-- Main -->
+    <main class="hud-main">
+
+      <!-- Camera -->
+      <section class="cam-panel">
+        <div class="cam-chips">
+          <span class="chip live-chip">● LIVE</span>
+          <span class="chip">FACE LANDMARKS</span>
+          <span class="chip">EXPRESSION AI</span>
+        </div>
+
+        <div class="video-wrapper">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="overlay"></canvas>
+          <div class="scan-corners">
+            <span class="sc tl"></span><span class="sc tr"></span>
+            <span class="sc bl"></span><span class="sc br"></span>
+          </div>
+          <div class="scan-line"></div>
+          <div class="crosshair"><span class="ch-h"></span><span class="ch-v"></span></div>
+          <button id="flip-btn">⟳ FLIP</button>
+        </div>
+
+        <div id="timer-bar-wrap" class="timer-wrap hidden">
+          <div class="timer-head">
+            <span>■ SCANNING</span><span><span id="timer-count">10</span>s</span>
+          </div>
+          <div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
+        </div>
+
+        <div class="status-row">
+          <span id="status" class="hud-status">Initializing...</span>
+          <span id="signal-pill" class="signal-pill">● STANDBY</span>
+        </div>
+        <div id="debug" style="font-size:0.7rem;color:#ef4444;word-break:break-all;"></div>
+      </section>
+
+      <!-- Telemetry -->
+      <aside class="tele-panel">
+        <div class="tele-head">
+          <span class="tele-title">TELEMETRY</span>
+          <span class="tele-sub">Live expression data</span>
+        </div>
+
+        <div id="tele-idle" class="tele-idle">
+          <div class="idle-icon">◎</div>
+          <p>Awaiting face detection</p>
+        </div>
+
+        <div id="mood-card" class="mood-card hidden">
+          <canvas id="face-canvas" width="120" height="120"></canvas>
+          <div id="mood-label" class="mood-label"></div>
+          <div id="mood-bar-container" class="bar-container"></div>
+        </div>
+
+        <div class="tele-info">
+          <div class="ti-row"><span>MODEL</span><span>TinyFaceDetector</span></div>
+          <div class="ti-row"><span>LANDMARKS</span><span>68-point</span></div>
+          <div class="ti-row"><span>SCAN TIME</span><span>10s</span></div>
+          <div class="ti-row"><span>THRESHOLD</span><span>0.25</span></div>
+        </div>
+      </aside>
+
+    </main>
   </div>
 
   <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
@@ -41,11 +103,18 @@
   <script>
     const session = JSON.parse(localStorage.getItem('md_session'));
     if (!session) window.location.href = 'login.html';
-    else document.getElementById('user-greeting').textContent = 'Hi, ' + session.name + ' 👋';
+    else document.getElementById('user-greeting').textContent = session.name.toUpperCase();
     function logout() {
       localStorage.removeItem('md_session');
       window.location.href = 'login.html';
     }
+    // Show/hide idle overlay
+    const origUpdate = window.updateMoodCard;
+    setInterval(() => {
+      const idle = document.getElementById('tele-idle');
+      const card = document.getElementById('mood-card');
+      if (idle && card) idle.style.display = card.classList.contains('hidden') ? 'flex' : 'none';
+    }, 300);
   </script>
 </body>
 </html>

@@ -52,14 +52,33 @@ body {
    HUD BODY (index page)
 ══════════════════════════════════ */
 body.hud-body {
-  background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:#f8fafc;
   padding:1.5rem;
+  position:relative;
+  overflow:hidden;
+}
+
+body.hud-body .bg-video {
+  position:fixed;
+  top:50%;
+  left:50%;
+  min-width:100%;
+  min-height:100%;
+  width:auto;
+  height:auto;
+  transform:translate(-50%, -50%);
+  z-index:0;
+  object-fit:cover;
+  opacity:0.15;
+  filter:blur(2px);
 }
 
 .hud-shell {
   max-width:1200px;
   margin:0 auto;
   animation:fadeUp 0.6s ease both;
+  position:relative;
+  z-index:1;
 }
 
 /* ── Topbar ── */
@@ -67,7 +86,7 @@ body.hud-body {
   display:flex;
   align-items:center;
   justify-content:space-between;
-  background:rgba(255,255,255,0.95);
+  background:rgba(255,255,255,0.98);
   backdrop-filter:blur(20px);
   padding:1rem 1.5rem;
   border-radius:16px;
@@ -75,6 +94,7 @@ body.hud-body {
   box-shadow:0 4px 20px rgba(0,0,0,0.08);
   gap:1rem;
   flex-wrap:wrap;
+  border:1px solid rgba(102,126,234,0.1);
 }
 
 .hud-brand {
@@ -201,11 +221,12 @@ body.hud-body {
   font-size:0.7rem;
   font-weight:600;
   color:#667eea;
-  background:rgba(255,255,255,0.9);
-  border:1px solid rgba(102,126,234,0.2);
+  background:rgba(255,255,255,0.95);
+  border:1px solid rgba(102,126,234,0.3);
   border-radius:8px;
   padding:0.4rem 0.8rem;
   letter-spacing:0.5px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.05);
 }
 
 .live-chip {
@@ -221,8 +242,8 @@ body.hud-body {
   border-radius:20px;
   overflow:hidden;
   background:#000;
-  box-shadow:0 20px 60px rgba(0,0,0,0.3);
-  animation:glow 3s ease-in-out infinite;
+  box-shadow:0 20px 60px rgba(102,126,234,0.3);
+  border:2px solid rgba(102,126,234,0.2);
 }
 
 #video {
@@ -377,9 +398,11 @@ body.hud-body {
   align-items:center;
   justify-content:space-between;
   gap:0.8rem;
-  background:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.98);
   padding:0.8rem 1rem;
   border-radius:12px;
+  border:1px solid rgba(102,126,234,0.1);
+  box-shadow:0 2px 12px rgba(0,0,0,0.05);
 }
 
 .hud-status {
@@ -412,11 +435,12 @@ body.hud-body {
 }
 
 .tele-head {
-  background:rgba(255,255,255,0.95);
+  background:rgba(255,255,255,0.98);
   backdrop-filter:blur(20px);
   padding:1rem 1.2rem;
   border-radius:16px;
   box-shadow:0 4px 20px rgba(0,0,0,0.08);
+  border:1px solid rgba(102,126,234,0.1);
 }
 
 .tele-title {
@@ -441,10 +465,11 @@ body.hud-body {
   flex-direction:column;
   align-items:center;
   gap:0.8rem;
-  background:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.98);
   padding:2rem 1.5rem;
   border-radius:16px;
   box-shadow:0 4px 20px rgba(0,0,0,0.08);
+  border:1px solid rgba(102,126,234,0.1);
 }
 
 .idle-icon {
@@ -461,12 +486,13 @@ body.hud-body {
 
 /* Mood card */
 .mood-card {
-  background:rgba(255,255,255,0.95);
+  background:rgba(255,255,255,0.98);
   backdrop-filter:blur(20px);
   border-radius:16px;
   padding:1.2rem;
   box-shadow:0 4px 20px rgba(0,0,0,0.08);
   animation:scaleIn 0.4s ease both;
+  border:1px solid rgba(102,126,234,0.1);
 }
 
 .mood-card.hidden {
@@ -581,13 +607,14 @@ body.hud-body {
 
 /* Tele info */
 .tele-info {
-  background:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.98);
   border-radius:16px;
   padding:1rem 1.2rem;
   box-shadow:0 4px 20px rgba(0,0,0,0.08);
   display:flex;
   flex-direction:column;
   gap:0.6rem;
+  border:1px solid rgba(102,126,234,0.1);
 }
 
 .ti-row {
