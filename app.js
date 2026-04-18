@@ -276,6 +276,7 @@ async function detectLoop() {
             });
             return { name: `Person ${index + 1}`, avg, firstSeen: person.firstSeen, lastSeen: person.lastSeen, photo: person.photo || null };
           });
+          alert(`Scan complete! Found ${finalData.length} person(s). Redirecting...`);
           localStorage.setItem('md_result', JSON.stringify(finalData));
           window.location.href = 'result.html';
           return;
