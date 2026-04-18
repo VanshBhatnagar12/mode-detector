@@ -1,119 +1,158 @@
 const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 
-let facingMode    = 'user';
+let facingMode = 'user';
 let currentStream = null;
 
-const MOOD_MAP = {
-  happy:     { color: '#f59e0b', message: 'You look happy! Keep smiling!' },
-  sad:       { color: '#3b82f6', message: "It's okay to feel sad. Take a deep breath." },
-  angry:     { color: '#ef4444', message: 'Take a moment to cool down.' },
-  fearful:   { color: '#8b5cf6', message: "You seem scared. You're safe here." },
-  disgusted: { color: '#10b981', message: 'Something bothering you?' },
-  surprised: { color: '#f97316', message: 'Something caught you off guard!' },
-  neutral:   { color: '#64748b', message: 'Feeling neutral. Nice and calm.' },
-  excited:   { color: '#fbbf24', message: "You're bursting with excitement!" },
-  anxious:   { color: '#7c3aed', message: 'Feeling anxious? Breathe slowly.' },
-  contempt:  { color: '#ec4899', message: "Something's not sitting right with you." },
-  calm:      { color: '#14b8a6', message: 'You look calm and collected.' },
-  bored:     { color: '#94a3b8', message: 'Looks like you need some excitement!' },
-  confused:  { color: '#f97316', message: "Feeling puzzled? That's okay." },
-  tired:     { color: '#06b6d4', message: 'You look tired. Rest up!' },
-};
-
-const PERSON_COLORS  = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
+const PERSON_COLORS = ['#74e0ff', '#ff7b93', '#70f0a6', '#ffcc67', '#a58bff'];
 const CONFIRM_FRAMES = 2;
-const IOU_THRESHOLD  = 0.3; // overlap threshold for position-based tracking
+const IOU_THRESHOLD = 0.3;
+const SCAN_DURATION = 10000;
 
-function getDerivedEmotion(e) {
-  if (e.happy > 0.5 && e.surprised > 0.2)   return 'excited';
-  if (e.fearful > 0.3 && e.sad > 0.2)        return 'anxious';
-  if (e.disgusted > 0.3 && e.angry > 0.2)    return 'contempt';
-  if (e.neutral > 0.6 && e.sad > 0.1)        return 'bored';
-  if (e.neutral > 0.7)                        return 'calm';
-  if (e.fearful > 0.2 && e.surprised > 0.2)  return 'confused';
-  if (e.sad > 0.4 && e.neutral > 0.3)        return 'tired';
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const statusEl = document.getElementById('status');
+const moodCard = document.getElementById('mood-card');
+const moodLabel = document.getElementById('mood-label');
+const barContainer = document.getElementById('mood-bar-container');
+const flipBtn = document.getElementById('flip-btn');
+const debugEl = document.getElementById('debug');
+const faceCanvas = document.getElementById('face-canvas');
+const faceCtx = faceCanvas.getContext('2d');
+const timerWrap = document.getElementById('timer-bar-wrap');
+const timerCount = document.getElementById('timer-count');
+const timerFill = document.getElementById('timer-fill');
+const signalPill = document.getElementById('signal-pill');
+const statFaces = document.getElementById('stat-faces');
+const statMode = document.getElementById('stat-mode');
+const statPhase = document.getElementById('stat-phase');
+
+let scanStartTime = null;
+let scanDone = false;
+let persons = [];
+let pendingFaces = [];
+
+const cropCanvas = document.createElement('canvas');
+const cropCtx = cropCanvas.getContext('2d');
+
+function getDerivedEmotion(expressions) {
+  if (expressions.happy > 0.5 && expressions.surprised > 0.2) return 'excited';
+  if (expressions.fearful > 0.3 && expressions.sad > 0.2) return 'anxious';
+  if (expressions.disgusted > 0.3 && expressions.angry > 0.2) return 'contempt';
+  if (expressions.neutral > 0.6 && expressions.sad > 0.1) return 'bored';
+  if (expressions.neutral > 0.7) return 'calm';
+  if (expressions.fearful > 0.2 && expressions.surprised > 0.2) return 'confused';
+  if (expressions.sad > 0.4 && expressions.neutral > 0.3) return 'tired';
   return null;
 }
 
-function formatTime(ms) { return (ms / 1000).toFixed(1) + 's'; }
-
-// IoU-based position matching (works without face descriptors)
 function iou(a, b) {
-  const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
   const x2 = Math.min(a.x + a.width, b.x + b.width);
   const y2 = Math.min(a.y + a.height, b.y + b.height);
-  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-  const union = a.width * a.height + b.width * b.height - inter;
-  return union > 0 ? inter / union : 0;
+  const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const union = a.width * a.height + b.width * b.height - intersection;
+  return union > 0 ? intersection / union : 0;
 }
 
-const video        = document.getElementById('video');
-const overlay      = document.getElementById('overlay');
-const statusEl     = document.getElementById('status');
-const moodCard     = document.getElementById('mood-card');
-const moodLabel    = document.getElementById('mood-label');
-const barContainer = document.getElementById('mood-bar-container');
-const flipBtn      = document.getElementById('flip-btn');
-const debugEl      = document.getElementById('debug');
-const faceCanvas   = document.getElementById('face-canvas');
-const faceCtx      = faceCanvas.getContext('2d');
-const timerWrap    = document.getElementById('timer-bar-wrap');
-const timerCount   = document.getElementById('timer-count');
-const timerFill    = document.getElementById('timer-fill');
+function setStatus(message, tone, phase) {
+  statusEl.textContent = message;
+  signalPill.textContent = phase;
+  signalPill.className = `signal-pill signal-${tone}`;
+  statPhase.textContent = phase;
+}
 
-const SCAN_DURATION = 10000;
-let scanStartTime   = null;
-let scanDone        = false;
+function updateStats(faceCount) {
+  statFaces.textContent = String(faceCount);
+  statMode.textContent = facingMode === 'user' ? 'Front' : 'Rear';
+}
 
-// persons: { box, accumulator, sampleCount, firstSeen, lastSeen, active, photo, missedFrames }
-let persons      = [];
-let pendingFaces = []; // { box, count }
+function drawRadar() {
+  faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+  const centerX = faceCanvas.width / 2;
+  const centerY = faceCanvas.height / 2;
+  const rings = [22, 38, 54];
 
-const cropCanvas = document.createElement('canvas');
-const cropCtx    = cropCanvas.getContext('2d');
+  faceCtx.strokeStyle = 'rgba(116, 224, 255, 0.18)';
+  faceCtx.lineWidth = 1;
+  rings.forEach(radius => {
+    faceCtx.beginPath();
+    faceCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    faceCtx.stroke();
+  });
+
+  faceCtx.beginPath();
+  faceCtx.moveTo(14, centerY);
+  faceCtx.lineTo(faceCanvas.width - 14, centerY);
+  faceCtx.moveTo(centerX, 14);
+  faceCtx.lineTo(centerX, faceCanvas.height - 14);
+  faceCtx.stroke();
+
+  persons.forEach((person, index) => {
+    const angle = ((index + 1) / Math.max(persons.length, 1)) * Math.PI * 1.6;
+    const radius = 22 + (index % rings.length) * 16;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    faceCtx.fillStyle = PERSON_COLORS[index % PERSON_COLORS.length];
+    faceCtx.beginPath();
+    faceCtx.arc(x, y, person.active ? 5 : 3.5, 0, Math.PI * 2);
+    faceCtx.fill();
+  });
+}
 
 async function loadModels() {
-  statusEl.textContent = 'Loading AI models...';
+  updateStats(0);
+  setStatus('Loading AI models...', 'idle', 'Booting');
+
   try {
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
     ]);
-    statusEl.textContent = 'Models loaded. Starting camera...';
+
+    setStatus('Models loaded. Starting camera...', 'idle', 'Ready');
     await startCamera();
-  } catch(err) {
-    statusEl.textContent = 'Failed to load models: ' + err.message;
+  } catch (error) {
+    setStatus(`Failed to load models: ${error.message}`, 'error', 'Fault');
   }
 }
 
 async function startCamera() {
-  if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+  if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+
   scanStartTime = null;
-  scanDone      = false;
-  persons       = [];
-  pendingFaces  = [];
+  scanDone = false;
+  persons = [];
+  pendingFaces = [];
+  updateStats(0);
+  moodCard.classList.add('hidden');
+  timerWrap.classList.add('hidden');
+  timerFill.style.width = '0%';
+  drawRadar();
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } }
+      video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
     });
-    currentStream  = stream;
+
+    currentStream = stream;
     video.srcObject = stream;
-    await new Promise(resolve => { video.onloadedmetadata = resolve; });
+    await new Promise(resolve => {
+      video.onloadedmetadata = resolve;
+    });
     await video.play();
 
-    // Fix mobile rotation
-    const track    = stream.getVideoTracks()[0];
+    const track = stream.getVideoTracks()[0];
     const settings = track.getSettings();
-    const w = settings.width  || video.videoWidth;
-    const h = settings.height || video.videoHeight;
-    overlay.width  = w;
-    overlay.height = h;
+    overlay.width = settings.width || video.videoWidth;
+    overlay.height = settings.height || video.videoHeight;
 
-    statusEl.textContent = 'Detecting mood...';
+    updateStats(0);
+    setStatus('Camera online. Waiting for a face in frame.', 'idle', 'Standby');
     detectLoop();
-  } catch (err) {
-    statusEl.textContent = '⚠️ Camera access denied. Please allow camera permissions.';
+  } catch (error) {
+    setStatus('Camera access denied. Please allow camera permissions.', 'error', 'Blocked');
   }
 }
 
@@ -121,23 +160,21 @@ flipBtn.addEventListener('click', async () => {
   facingMode = facingMode === 'user' ? 'environment' : 'user';
   video.classList.toggle('rear', facingMode === 'environment');
   overlay.classList.toggle('rear', facingMode === 'environment');
+  setStatus('Switching camera feed...', 'alert', 'Switching');
   await startCamera();
 });
 
 async function detectLoop() {
-  // Lower scoreThreshold + larger inputSize helps detect faces with caps
   const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.25 });
-  const ctx     = overlay.getContext('2d');
+  const ctx = overlay.getContext('2d');
 
   const detect = async () => {
     if (scanDone) return;
-    try {
-      const results = await faceapi
-        .detectAllFaces(video, options)
-        .withFaceLandmarks()
-        .withFaceExpressions();
 
+    try {
+      const results = await faceapi.detectAllFaces(video, options).withFaceLandmarks().withFaceExpressions();
       ctx.clearRect(0, 0, overlay.width, overlay.height);
+      debugEl.textContent = '';
 
       if (results.length > 0) {
         if (!scanStartTime) {
@@ -145,193 +182,222 @@ async function detectLoop() {
           timerWrap.classList.remove('hidden');
         }
 
-        const elapsed      = Date.now() - scanStartTime;
-        const matched      = new Set();
-        const newPending   = [];
+        const elapsed = Date.now() - scanStartTime;
+        const matched = new Set();
+        const newPending = [];
 
         results.forEach(result => {
           const box = result.detection.box;
+          let bestIdx = -1;
+          let bestIou = IOU_THRESHOLD;
 
-          // Match to existing person by IoU
-          let bestIdx  = -1;
-          let bestIou  = IOU_THRESHOLD;
-          persons.forEach((p, i) => {
-            const score = iou(box, p.box);
-            if (score > bestIou) { bestIou = score; bestIdx = i; }
+          persons.forEach((person, index) => {
+            const score = iou(box, person.box);
+            if (score > bestIou) {
+              bestIou = score;
+              bestIdx = index;
+            }
           });
 
           if (bestIdx !== -1 && !matched.has(bestIdx)) {
             matched.add(bestIdx);
-            const p      = persons[bestIdx];
-            p.box        = box;
-            p.lastSeen   = elapsed;
-            p.active     = true;
-            p.missedFrames = 0;
-            const expressions = result.expressions;
-            Object.keys(p.accumulator).forEach(k => { p.accumulator[k] += expressions[k] || 0; });
-            p.sampleCount++;
-            drawPersonOnCanvas(ctx, result, bestIdx, expressions);
-          } else {
-            // Check pending
-            let pi = -1, pBest = IOU_THRESHOLD;
-            pendingFaces.forEach((pf, i) => {
-              const score = iou(box, pf.box);
-              if (score > pBest) { pBest = score; pi = i; }
+            const person = persons[bestIdx];
+            person.box = box;
+            person.lastSeen = elapsed;
+            person.active = true;
+            person.missedFrames = 0;
+            Object.keys(person.accumulator).forEach(key => {
+              person.accumulator[key] += result.expressions[key] || 0;
             });
+            person.sampleCount += 1;
+            drawPersonOnCanvas(ctx, result, bestIdx);
+            return;
+          }
 
-            if (pi !== -1) {
-              pendingFaces[pi].count++;
-              pendingFaces[pi].box = box;
-              if (pendingFaces[pi].count >= CONFIRM_FRAMES) {
-                const photo  = captureFace(box);
-                const newIdx = persons.length;
-                persons.push({
-                  box, photo,
-                  accumulator:  { happy:0, sad:0, angry:0, fearful:0, disgusted:0, surprised:0, neutral:0 },
-                  sampleCount:  0,
-                  firstSeen:    elapsed,
-                  lastSeen:     elapsed,
-                  active:       true,
-                  missedFrames: 0,
-                });
-                matched.add(newIdx);
-                drawPersonOnCanvas(ctx, result, newIdx, result.expressions);
-              } else {
-                newPending.push(pendingFaces[pi]);
-              }
-            } else {
-              newPending.push({ box, count: 1 });
+          let pendingIndex = -1;
+          let pendingBest = IOU_THRESHOLD;
+          pendingFaces.forEach((pendingFace, index) => {
+            const score = iou(box, pendingFace.box);
+            if (score > pendingBest) {
+              pendingBest = score;
+              pendingIndex = index;
             }
+          });
+
+          if (pendingIndex !== -1) {
+            pendingFaces[pendingIndex].count += 1;
+            pendingFaces[pendingIndex].box = box;
+            if (pendingFaces[pendingIndex].count >= CONFIRM_FRAMES) {
+              const newIndex = persons.length;
+              persons.push({
+                box,
+                photo: captureFace(box),
+                accumulator: { happy: 0, sad: 0, angry: 0, fearful: 0, disgusted: 0, surprised: 0, neutral: 0 },
+                sampleCount: 0,
+                firstSeen: elapsed,
+                lastSeen: elapsed,
+                active: true,
+                missedFrames: 0,
+              });
+              matched.add(newIndex);
+              drawPersonOnCanvas(ctx, result, newIndex);
+            } else {
+              newPending.push(pendingFaces[pendingIndex]);
+            }
+          } else {
+            newPending.push({ box, count: 1 });
           }
         });
 
         pendingFaces = newPending;
-        persons.forEach((p, i) => {
-          if (!matched.has(i)) {
-            p.missedFrames = (p.missedFrames || 0) + 1;
-            p.active = false;
+        persons.forEach((person, index) => {
+          if (!matched.has(index)) {
+            person.missedFrames = (person.missedFrames || 0) + 1;
+            person.active = false;
           }
         });
 
         updateMoodCard();
+        updateStats(results.length);
         moodCard.classList.remove('hidden');
 
         const remaining = Math.max(0, Math.ceil((SCAN_DURATION - elapsed) / 1000));
         timerCount.textContent = remaining;
-        timerFill.style.width  = Math.min((elapsed / SCAN_DURATION) * 100, 100) + '%';
-        statusEl.textContent   = `${results.length} face${results.length > 1 ? 's' : ''} detected`;
+        timerFill.style.width = `${Math.min((elapsed / SCAN_DURATION) * 100, 100)}%`;
+        setStatus(`${results.length} face${results.length > 1 ? 's' : ''} tracked in frame.`, 'live', 'Scanning');
 
         if (elapsed >= SCAN_DURATION) {
           scanDone = true;
-          const finalData = persons.map((p, i) => {
+          setStatus('Scan complete. Building the result view...', 'live', 'Complete');
+          const finalData = persons.map((person, index) => {
             const avg = {};
-            Object.keys(p.accumulator).forEach(k => {
-              avg[k] = p.sampleCount > 0 ? p.accumulator[k] / p.sampleCount : 0;
+            Object.keys(person.accumulator).forEach(key => {
+              avg[key] = person.sampleCount > 0 ? person.accumulator[key] / person.sampleCount : 0;
             });
-            return { name: `Person ${i + 1}`, avg, firstSeen: p.firstSeen, lastSeen: p.lastSeen, photo: p.photo || null };
+            return { name: `Person ${index + 1}`, avg, firstSeen: person.firstSeen, lastSeen: person.lastSeen, photo: person.photo || null };
           });
           localStorage.setItem('md_result', JSON.stringify(finalData));
           window.location.href = 'result.html';
           return;
         }
-
       } else {
-        persons.forEach(p => p.active = false);
+        persons.forEach(person => {
+          person.active = false;
+        });
         pendingFaces = [];
+        updateStats(0);
+        drawRadar();
         moodCard.classList.add('hidden');
-        faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
-        statusEl.textContent = 'No face detected. Please look at the camera.';
+        setStatus('No face detected. Move into the camera frame.', 'alert', 'Searching');
       }
-
-    } catch(err) {
-      debugEl.textContent = err.message;
+    } catch (error) {
+      debugEl.textContent = error.message;
+      setStatus('Live analysis hit an error.', 'error', 'Fault');
     }
+
     setTimeout(detect, 100);
   };
 
   detect();
 }
 
-function drawPersonOnCanvas(ctx, result, personIdx, expressions) {
-  const color      = PERSON_COLORS[personIdx % PERSON_COLORS.length];
-  const box        = result.detection.box;
-  const dominant   = expressions.asSortedArray()[0];
-  const emotionKey = getDerivedEmotion(expressions) || dominant.expression;
-  const isFront    = facingMode === 'user';
-  const bx         = isFront ? overlay.width - box.x - box.width : box.x;
+function drawPersonOnCanvas(ctx, result, personIdx) {
+  const color = PERSON_COLORS[personIdx % PERSON_COLORS.length];
+  const box = result.detection.box;
+  const dominant = result.expressions.asSortedArray()[0];
+  const emotionKey = getDerivedEmotion(result.expressions) || dominant.expression;
+  const isFront = facingMode === 'user';
+  const x = isFront ? overlay.width - box.x - box.width : box.x;
 
   ctx.strokeStyle = color;
-  ctx.lineWidth   = 3;
-  ctx.strokeRect(bx, box.y, box.width, box.height);
+  ctx.lineWidth = 2.5;
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = color;
+  ctx.strokeRect(x, box.y, box.width, box.height);
+  ctx.shadowBlur = 0;
 
-  const label = `Person ${personIdx + 1}: ${emotionKey.toUpperCase()}`;
-  ctx.font     = 'bold 14px Segoe UI';
-  const tw     = ctx.measureText(label).width;
-  ctx.fillStyle = color;
-  ctx.fillRect(bx, box.y - 24, tw + 10, 22);
-  ctx.fillStyle = '#fff';
-  ctx.fillText(label, bx + 5, box.y - 7);
+  const label = `Person ${personIdx + 1}  ${emotionKey.toUpperCase()}`;
+  ctx.font = '600 14px Rajdhani';
+  const textWidth = ctx.measureText(label).width;
+  const labelY = Math.max(8, box.y - 24);
 
+  ctx.fillStyle = 'rgba(7, 17, 31, 0.88)';
+  ctx.fillRect(x, labelY, textWidth + 16, 22);
+  ctx.strokeStyle = color;
+  ctx.strokeRect(x, labelY, textWidth + 16, 22);
+  ctx.fillStyle = '#e8f3ff';
+  ctx.fillText(label, x + 8, labelY + 16);
   drawLandmarks(ctx, result.landmarks, color, isFront);
 }
 
 function drawLandmarks(ctx, landmarks, color, isFront) {
-  ctx.fillStyle   = color;
+  const mirroredX = point => (isFront ? overlay.width - point.x : point.x);
+  ctx.fillStyle = color;
   ctx.strokeStyle = color;
-  ctx.lineWidth   = 1.2;
-  ctx.globalAlpha = 0.5;
-  const mx = pt => isFront ? overlay.width - pt.x : pt.x;
-  landmarks.positions.forEach(pt => {
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.55;
+
+  landmarks.positions.forEach(point => {
     ctx.beginPath();
-    ctx.arc(mx(pt), pt.y, 1.5, 0, Math.PI * 2);
+    ctx.arc(mirroredX(point), point.y, 1.4, 0, Math.PI * 2);
     ctx.fill();
   });
-  [
-    landmarks.getJawOutline(), landmarks.getLeftEyeBrow(), landmarks.getRightEyeBrow(),
-    landmarks.getLeftEye(), landmarks.getRightEye(), landmarks.getNose(), landmarks.getMouth(),
-  ].forEach(group => {
+
+  [landmarks.getJawOutline(), landmarks.getLeftEyeBrow(), landmarks.getRightEyeBrow(), landmarks.getLeftEye(), landmarks.getRightEye(), landmarks.getNose(), landmarks.getMouth()].forEach(group => {
     ctx.beginPath();
-    group.forEach((pt, i) => i === 0 ? ctx.moveTo(mx(pt), pt.y) : ctx.lineTo(mx(pt), pt.y));
+    group.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(mirroredX(point), point.y);
+      else ctx.lineTo(mirroredX(point), point.y);
+    });
     ctx.stroke();
   });
+
   ctx.globalAlpha = 1;
 }
 
 function updateMoodCard() {
-  faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
-  moodLabel.textContent = `${persons.length} Person${persons.length > 1 ? 's' : ''} Detected`;
-  moodLabel.style.color = '#0369a1';
-  barContainer.innerHTML = '';
-  persons.forEach((p, i) => {
-    const color      = PERSON_COLORS[i % PERSON_COLORS.length];
-    const sorted     = Object.entries(p.accumulator).sort((a, b) => b[1] - a[1]);
+  drawRadar();
+  moodLabel.textContent = `${persons.length} subject${persons.length === 1 ? '' : 's'} indexed`;
+  barContainer.innerHTML = persons.map((person, index) => {
+    const color = PERSON_COLORS[index % PERSON_COLORS.length];
+    const sorted = Object.entries(person.accumulator).sort((a, b) => b[1] - a[1]);
     const emotionKey = sorted[0][0];
-    const pct        = p.sampleCount > 0 ? Math.round((sorted[0][1] / p.sampleCount) * 100) : 0;
-    const photoHtml  = p.photo
-      ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid ${color};flex-shrink:0;"/>`
-      : `<div style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">👤</div>`;
-    barContainer.innerHTML += `
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
-        ${photoHtml}
-        <div style="flex:1;">
-          <div style="font-weight:700;color:${color};font-size:0.85rem;">
-            Person ${i + 1} <span style="font-size:0.7rem;">${p.active ? '🟢 in frame' : '⚫ left'}</span>
+    const pct = person.sampleCount > 0 ? Math.round((sorted[0][1] / person.sampleCount) * 100) : 0;
+    const stateLabel = person.active ? 'live' : 'out';
+    const avatar = person.photo
+      ? `<img class="person-avatar" src="${person.photo}" alt="Person ${index + 1}" style="border: 2px solid ${color};" />`
+      : `<div class="person-avatar-placeholder" style="border: 2px solid ${color};">P${index + 1}</div>`;
+
+    return `
+      <div class="person-row">
+        ${avatar}
+        <div class="person-meta">
+          <div class="person-title">
+            <strong style="color:${color};">Person ${index + 1}</strong>
+            <span class="person-state">${stateLabel}</span>
           </div>
-          <div style="font-size:0.8rem;color:#475569;">${emotionKey} — ${pct}%</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%; background:${color};"></div>
+          </div>
+          <div class="person-detail">
+            <span>${emotionKey}</span>
+            <span>${pct}% confidence</span>
+          </div>
         </div>
-      </div>`;
-  });
+      </div>
+    `;
+  }).join('');
 }
 
 function captureFace(box) {
-  const pad = 24;
-  const x   = Math.max(0, box.x - pad);
-  const y   = Math.max(0, box.y - pad);
-  const w   = Math.min(video.videoWidth  - x, box.width  + pad * 2);
-  const h   = Math.min(video.videoHeight - y, box.height + pad * 2);
-  cropCanvas.width  = w;
-  cropCanvas.height = h;
-  cropCtx.drawImage(video, x, y, w, h, 0, 0, w, h);
+  const padding = 24;
+  const x = Math.max(0, box.x - padding);
+  const y = Math.max(0, box.y - padding);
+  const width = Math.min(video.videoWidth - x, box.width + padding * 2);
+  const height = Math.min(video.videoHeight - y, box.height + padding * 2);
+  cropCanvas.width = width;
+  cropCanvas.height = height;
+  cropCtx.drawImage(video, x, y, width, height, 0, 0, width, height);
   return cropCanvas.toDataURL('image/jpeg', 0.7);
 }
 
